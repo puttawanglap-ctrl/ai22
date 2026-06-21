@@ -1,0 +1,1286 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>เกมการศึกษา: ระบบย่อยอาหาร AR แสนลื่นไหล</title>
+
+    <!-- Google Fonts: Mitr & Chakra Petch -->
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Mitr:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Mitr', 'sans-serif'],
+                        display: ['Chakra Petch', 'sans-serif'],
+                    },
+                    colors: {
+                        premium: {
+                            blue: '#0284C7',
+                            pink: '#F43F5E',
+                            green: '#10B981',
+                            gold: '#F59E0B',
+                            dark: '#1E293B'
+                        }
+                    },
+                    boxShadow: {
+                        '3d-btn': '0 8px 0px #0369a1, 0 15px 20px rgba(0,0,0,0.15)',
+                        '3d-btn-pressed': '0 2px 0px #0369a1, 0 4px 6px rgba(0,0,0,0.1)',
+                        'panel-3d': '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04), inset 0 -8px 0 rgba(0,0,0,0.1)'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- MediaPipe Hand Tracking Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        body {
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+            background: radial-gradient(circle, #f0f9ff 0%, #e0f2fe 100%);
+            touch-action: none;
+        }
+
+        /* Hardware Accelerated Smooth Classes */
+        .ar-cursor-pointer {
+            position: fixed;
+            width: 44px;
+            height: 44px;
+            background: rgba(255, 255, 255, 0.9);
+            border: 4px solid #0284C7;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 1000;
+            transform: translate3d(-50%, -50%, 0);
+            box-shadow: 0 0 25px rgba(2, 132, 199, 0.8), inset 0 0 10px rgba(2, 132, 199, 0.5);
+            transition: width 0.15s, height 0.15s, background-color 0.15s;
+            will-change: transform, left, top;
+            display: none;
+        }
+
+        .ar-cursor-pointer.pinching {
+            width: 32px;
+            height: 32px;
+            background: rgba(244, 63, 94, 0.95);
+            border-color: #f43f5e;
+            box-shadow: 0 0 30px rgba(244, 63, 94, 0.9), inset 0 0 8px rgba(255,255,255,0.8);
+        }
+
+        .draggable-word-chip {
+            cursor: grab;
+            transition: transform 0.15s, box-shadow 0.15s;
+            touch-action: none;
+            will-change: transform, left, top;
+            transform: translate3d(0, 0, 0);
+        }
+        .draggable-word-chip:active, .draggable-word-chip.dragging {
+            cursor: grabbing;
+            transform: scale(1.08) rotate(1deg) translate3d(0, 0, 0);
+            box-shadow: 0 15px 25px rgba(0,0,0,0.2);
+            z-index: 99;
+        }
+
+        .target-drop-zone {
+            border: 3px dashed rgba(2, 132, 199, 0.35);
+            background: rgba(255, 255, 255, 0.5);
+            backdrop-filter: blur(4px);
+            transition: border-color 0.2s, background-color 0.2s, transform 0.2s;
+            will-change: transform;
+        }
+        .target-drop-zone.active-hover {
+            border-color: #10B981;
+            background: rgba(16, 185, 129, 0.15);
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+        }
+        .target-drop-zone.filled-success {
+            border-style: solid;
+            border-color: #10B981;
+            background: rgba(255, 255, 255, 0.95);
+        }
+
+        /* Animations for 3D premium cartoon look */
+        .floating-guide {
+            animation: floatSlow 3.5s ease-in-out infinite;
+        }
+        @keyframes floatSlow {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-10px) rotate(1.5deg); }
+        }
+
+        .chest-shake {
+            animation: chestShake 2s cubic-bezier(.36,.07,.19,.97) infinite;
+        }
+        @keyframes chestShake {
+            10%, 90% { transform: translate3d(-1px, 0, 0) scale(1.05); }
+            20%, 80% { transform: translate3d(2px, 0, 0) scale(1.05); }
+            30%, 50%, 70% { transform: translate3d(-3px, 0, 0) scale(1.05); }
+            40%, 60% { transform: translate3d(3px, 0, 0) scale(1.05); }
+        }
+
+        .btn-premium-3d {
+            transition: all 0.1s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .btn-premium-3d:active {
+            transform: translateY(3px);
+            box-shadow: 0 3px 0px #0369a1, 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.45);
+            backdrop-filter: blur(12px);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-screen overflow-hidden font-sans">
+
+    <!-- Video Element (Hidden from user, optimized for inference speed) -->
+    <video id="input_video" class="hidden" width="480" height="360" autoplay playsinline></video>
+
+    <!-- Top HUD Bar -->
+    <header class="relative z-40 p-4 flex justify-between items-center bg-white/50 backdrop-blur-md border-b-2 border-white/60 shadow-md">
+        <div class="flex items-center gap-4">
+            <button id="arTriggerBtn" onclick="toggleARMode()" class="bg-gradient-to-r from-sky-400 to-blue-500 hover:from-sky-500 hover:to-blue-600 text-white p-3 rounded-2xl shadow-lg btn-premium-3d border-b-4 border-blue-700 flex items-center justify-center gap-2">
+                <i id="arCameraIcon" class="fas fa-camera text-xl"></i>
+                <span id="arBtnText" class="font-display font-bold text-sm hidden md:inline">เปิดใช้งานโหมด AR</span>
+            </button>
+            <div>
+                <h1 class="font-display text-2xl md:text-3xl font-bold text-sky-800 leading-tight flex items-center gap-2">
+                    <span>วิชาสุขศึกษา:</span>
+                    <span class="text-premium-pink font-extrabold">ระบบย่อยอาหารแสนสนุก</span>
+                </h1>
+                <p class="text-xs md:text-sm text-sky-600 font-medium">คีบวางอวัยวะภายในเด็กหญิงผมแกละตามรูป image_b1050e.png ให้ถูกต้องนะ!</p>
+            </div>
+        </div>
+
+        <!-- Premium HUD widgets -->
+        <div class="flex gap-4">
+            <div class="flex items-center bg-white/90 rounded-2xl px-3 py-1.5 shadow-inner border border-yellow-200">
+                <div class="bg-yellow-400 rounded-full w-8 h-8 flex items-center justify-center text-white shadow-md mr-2">
+                    <i class="fas fa-star text-sm"></i>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[9px] text-yellow-600 font-bold leading-none">คะแนนดาว</span>
+                    <span class="font-display font-bold text-yellow-600 text-lg leading-none" id="starCount">86</span>
+                </div>
+                <button onclick="triggerMiniJoy()" class="bg-emerald-400 hover:bg-emerald-500 text-white rounded-lg w-5 h-5 flex items-center justify-center btn-premium-3d ml-3 shadow">
+                    <i class="fas fa-plus text-[10px]"></i>
+                </button>
+            </div>
+            <div class="flex items-center bg-white/90 rounded-2xl px-3 py-1.5 shadow-inner border border-pink-200">
+                <div class="bg-pink-400 rounded-full w-8 h-8 flex items-center justify-center text-white shadow-md mr-2">
+                    <i class="fas fa-gem text-sm"></i>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[9px] text-pink-600 font-bold leading-none">อัญมณี</span>
+                    <span class="font-display font-bold text-pink-600 text-lg leading-none" id="gemCount">128</span>
+                </div>
+                <button onclick="triggerMiniJoy()" class="bg-emerald-400 hover:bg-emerald-500 text-white rounded-lg w-5 h-5 flex items-center justify-center btn-premium-3d ml-3 shadow">
+                    <i class="fas fa-plus text-[10px]"></i>
+                </button>
+            </div>
+            <div class="flex items-center bg-white/90 rounded-2xl px-3 py-1.5 shadow-inner border border-yellow-300">
+                <div class="bg-gradient-to-br from-amber-300 to-amber-500 rounded-full w-8 h-8 flex items-center justify-center text-white shadow-md mr-2 border border-amber-600">
+                    <span class="font-bold text-sm">C</span>
+                </div>
+                <div class="flex flex-col">
+                    <span class="text-[9px] text-amber-700 font-bold leading-none">เหรียญทอง</span>
+                    <span class="font-display font-bold text-amber-700 text-lg leading-none" id="coinCount">3,250</span>
+                </div>
+                <button onclick="triggerMiniJoy()" class="bg-emerald-400 hover:bg-emerald-500 text-white rounded-lg w-5 h-5 flex items-center justify-center btn-premium-3d ml-3 shadow">
+                    <i class="fas fa-plus text-[10px]"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Play Area / Canvas -->
+    <main class="flex-1 relative w-full h-full overflow-hidden" id="gameArea">
+        <canvas id="bgCanvas" class="absolute inset-0 z-0"></canvas>
+        <canvas id="arOverlayCanvas" class="absolute inset-0 z-20"></canvas>
+
+        <!-- SVG Girl character based on image_b1050e.png -->
+        <div class="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+            <svg id="characterSvg" class="w-auto h-[74vh] max-h-[560px] md:max-h-[660px] drop-shadow-2xl" viewBox="0 0 400 800" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                    <radialGradient id="skinGrad" cx="50%" cy="40%" r="60%">
+                        <stop offset="0%" stop-color="#FFE4E6"/>
+                        <stop offset="100%" stop-color="#FDBA74"/>
+                    </radialGradient>
+                    <linearGradient id="hairGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#4A2F13"/>
+                        <stop offset="100%" stop-color="#231305"/>
+                    </linearGradient>
+                    <linearGradient id="shirtGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#f43f5e"/>
+                        <stop offset="100%" stop-color="#fda4af"/>
+                    </linearGradient>
+                    <linearGradient id="pantGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#2563EB"/>
+                        <stop offset="100%" stop-color="#1D4ED8"/>
+                    </linearGradient>
+                    <!-- Digestive Gradients matching biological colors of image_b1050e.png -->
+                    <linearGradient id="esophagusGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                        <stop offset="0%" stop-color="#ff9999"/>
+                        <stop offset="50%" stop-color="#f43f5e"/>
+                        <stop offset="100%" stop-color="#be123c"/>
+                    </linearGradient>
+                    <radialGradient id="stomachGrad" cx="30%" cy="30%" r="70%">
+                        <stop offset="0%" stop-color="#ffb3c1"/>
+                        <stop offset="60%" stop-color="#fb7185"/>
+                        <stop offset="100%" stop-color="#9f1239"/>
+                    </radialGradient>
+                    <linearGradient id="liverGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#a83f3f"/>
+                        <stop offset="50%" stop-color="#7c1d1d"/>
+                        <stop offset="100%" stop-color="#450a0a"/>
+                    </linearGradient>
+                    <linearGradient id="pancreasGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stop-color="#ffe066"/>
+                        <stop offset="100%" stop-color="#eab308"/>
+                    </linearGradient>
+                    <radialGradient id="smallIntGrad" cx="50%" cy="50%" r="50%">
+                        <stop offset="0%" stop-color="#ffccd5"/>
+                        <stop offset="100%" stop-color="#f43f5e"/>
+                    </radialGradient>
+                    <linearGradient id="largeIntGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+                        <stop offset="0%" stop-color="#84cc16"/>
+                        <stop offset="100%" stop-color="#4d7c0f"/>
+                    </linearGradient>
+                    
+                    <filter id="shadow3d" x="-10%" y="-10%" width="120%" height="120%">
+                        <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#0f172a" flood-opacity="0.12" />
+                    </filter>
+                    <filter id="organGlow" x="-25%" y="-25%" width="150%" height="150%">
+                        <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="#ffffff" flood-opacity="0.85" />
+                    </filter>
+                </defs>
+
+                <!-- Hair Back Pigtails -->
+                <g id="pigtails">
+                    <path d="M 65 210 C 15 220, 5 310, 55 350 C 95 330, 105 240, 65 210" fill="url(#hairGrad)"/>
+                    <circle cx="70" cy="225" r="11" fill="#f43f5e" />
+                    <path d="M 335 210 C 385 220, 395 310, 345 350 C 305 330, 295 240, 335 210" fill="url(#hairGrad)"/>
+                    <circle cx="330" cy="225" r="11" fill="#f43f5e" />
+                </g>
+
+                <!-- Body Back Base -->
+                <path d="M 125 400 Q 200 400, 275 400 L 275 610 L 125 610 Z" fill="#FFE4E6" opacity="0.3" />
+
+                <!-- Digestive Organs inside the transparent torso -->
+                <g id="digestiveOrgans" filter="url(#organGlow)">
+                    <!-- Esophagus -->
+                    <path d="M 200 160 L 200 300 Q 200 325, 218 335" fill="none" stroke="url(#esophagusGrad)" stroke-width="12" stroke-linecap="round" />
+
+                    <!-- Stomach -->
+                    <path d="M 215 325 C 220 342, 255 332, 260 362 C 265 392, 230 405, 210 398 C 195 392, 192 378, 196 368 C 200 358, 212 368, 215 362 C 218 356, 215 335, 215 325 Z" fill="url(#stomachGrad)" filter="url(#shadow3d)" />
+
+                    <!-- Pancreas (Yellow, underneath stomach) -->
+                    <path d="M 195 395 C 215 395, 245 385, 255 402 C 245 412, 205 417, 195 395" fill="url(#pancreasGrad)" />
+
+                    <!-- Liver & Gallbladder -->
+                    <path d="M 145 335 C 155 325, 195 328, 212 348 C 217 358, 182 388, 162 383 C 147 378, 138 348, 145 335 Z" fill="url(#liverGrad)" filter="url(#shadow3d)" />
+                    <!-- Gallbladder (Green small node) -->
+                    <circle cx="188" cy="372" r="7" fill="#10B981" />
+                    <path d="M 188 368 Q 188 355, 200 355" fill="none" stroke="#10B981" stroke-width="2" />
+
+                    <!-- Small Intestine (Beautiful intricate folds) -->
+                    <g fill="none" stroke="url(#smallIntGrad)" stroke-width="14" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M 195 470 Q 215 480, 200 495 T 195 515 T 210 530 T 195 545" />
+                        <path d="M 210 475 Q 185 495, 210 510 T 185 530 T 210 540" />
+                    </g>
+
+                    <!-- Large Intestine (Segmented/Beaded look like image_b1050e.png) -->
+                    <g fill="none" stroke="url(#largeIntGrad)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity="0.95">
+                        <path d="M 172 540 L 168 455 L 238 455 L 232 550 L 202 550" />
+                    </g>
+                    <!-- Shadow / Highlight overlays for beads -->
+                    <g fill="none" stroke="#3f6212" stroke-width="22" stroke-dasharray="2 16" stroke-linecap="round" opacity="0.8">
+                        <path d="M 172 540 L 168 455 L 238 455 L 232 550 L 202 550" />
+                    </g>
+                </g>
+
+                <!-- Head and facial elements -->
+                <g id="head" filter="url(#shadow3d)">
+                    <circle cx="200" cy="140" r="68" fill="url(#skinGrad)" />
+                    <circle cx="127" cy="140" r="13" fill="url(#skinGrad)" />
+                    <circle cx="273" cy="140" r="13" fill="url(#skinGrad)" />
+
+                    <!-- Shiny Anime Eyes from image_b1050e.png -->
+                    <ellipse cx="172" cy="132" rx="13" ry="15" fill="#3A1E05" />
+                    <circle cx="168" cy="126" r="5" fill="#ffffff" />
+                    <circle cx="175" cy="135" r="2.2" fill="#ffffff" />
+
+                    <ellipse cx="228" cy="132" rx="13" ry="15" fill="#3A1E05" />
+                    <circle cx="224" cy="126" r="5" fill="#ffffff" />
+                    <circle cx="231" cy="135" r="2.2" fill="#ffffff" />
+
+                    <!-- Blushing effect -->
+                    <ellipse cx="156" cy="149" rx="11" ry="5.5" fill="#f43f5e" opacity="0.35" />
+                    <ellipse cx="244" cy="149" rx="11" ry="5.5" fill="#f43f5e" opacity="0.35" />
+
+                    <!-- Happy Mouth -->
+                    <path d="M 186 156 Q 200 178, 214 156 Z" fill="#9f1239" />
+                    <path d="M 192 169 Q 200 175, 208 169 Z" fill="#f43f5e" />
+                </g>
+
+                <!-- Front Hair -->
+                <g id="frontHair">
+                    <path d="M 132 110 C 152 70, 248 70, 268 110 C 283 140, 258 160, 248 140 C 228 102, 172 102, 152 140 C 142 160, 117 140, 132 110 Z" fill="url(#hairGrad)" />
+                </g>
+
+                <!-- Glassmorphic Torso Sleeve overlay -->
+                <path d="M 142 240 C 132 350, 122 400, 132 580 C 142 600, 258 600, 268 580 C 278 400, 268 350, 258 240 Z" fill="#FFE4E6" opacity="0.22" stroke="#FFFFFF" stroke-width="3" />
+
+                <!-- Arms (On hips) -->
+                <path d="M 142 240 C 102 270, 82 340, 117 380" fill="none" stroke="url(#skinGrad)" stroke-width="24" stroke-linecap="round" />
+                <path d="M 258 240 C 298 270, 318 340, 283 380" fill="none" stroke="url(#skinGrad)" stroke-width="24" stroke-linecap="round" />
+
+                <!-- Sleeves -->
+                <path d="M 134 235 C 127 255, 117 280, 132 295" fill="none" stroke="url(#shirtGrad)" stroke-width="26" stroke-linecap="round" />
+                <path d="M 266 235 C 273 255, 283 280, 268 295" fill="none" stroke="url(#shirtGrad)" stroke-width="26" stroke-linecap="round" />
+
+                <!-- Denim Shorts -->
+                <path d="M 127 570 L 273 570 L 282 640 L 208 640 L 208 600 L 192 600 L 192 640 L 118 640 Z" fill="url(#pantGrad)" filter="url(#shadow3d)" />
+                <rect x="114" y="632" width="78" height="11" rx="4" fill="#60a5fa" />
+                <rect x="208" y="632" width="78" height="11" rx="4" fill="#60a5fa" />
+
+                <!-- Legs -->
+                <rect x="137" y="644" width="33" height="68" rx="8" fill="url(#skinGrad)" />
+                <rect x="230" y="644" width="33" height="68" rx="8" fill="url(#skinGrad)" />
+                <rect x="135" y="694" width="37" height="24" rx="4" fill="#ffffff" />
+                <rect x="228" y="694" width="37" height="24" rx="4" fill="#ffffff" />
+
+                <!-- Pink Sneakers -->
+                <path d="M 117 744 Q 117 714, 137 714 L 177 724 L 177 754 L 117 754 Z" fill="#f43f5e" />
+                <rect x="114" y="747" width="65" height="9" rx="4" fill="#ffffff" />
+                <path d="M 283 744 Q 283 714, 263 714 L 223 724 L 223 754 L 283 754 Z" fill="#f43f5e" />
+                <rect x="221" y="747" width="65" height="9" rx="4" fill="#ffffff" />
+            </svg>
+        </div>
+
+        <!-- Float Info Bee -->
+        <div class="absolute top-4 left-4 md:top-10 md:left-10 z-20 floating-guide flex flex-col items-center pointer-events-none">
+            <div class="glass-panel px-4 py-2.5 rounded-3xl shadow-xl relative mb-3 text-center border-2 border-amber-300 max-w-[200px] md:max-w-xs pointer-events-auto">
+                <p id="assistantSpeech" class="text-[11px] md:text-sm font-bold text-sky-900 leading-relaxed">
+                    สวัสดีจ้า! หากใช้กล้อง AR ไม่สะดวก สามารถกดปิดกล้องเพื่อลากวางตามปกติได้เลยน้า!
+                </p>
+                <div class="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-4 h-4 glass-panel border-b-2 border-r-2 border-amber-200 rotate-45"></div>
+            </div>
+            <div class="text-4xl md:text-6xl drop-shadow-lg filter select-none">🐝</div>
+        </div>
+
+        <!-- Snap Drop Zones Container -->
+        <div id="dropZonesContainer" class="absolute inset-0 z-20 pointer-events-none"></div>
+
+        <!-- Word Chips Bottom Tray -->
+        <div class="absolute bottom-24 left-0 w-full flex justify-center gap-2 md:gap-4 px-4 md:px-8 z-30 flex-wrap" id="chipsTray"></div>
+    </main>
+
+    <!-- Bottom Interactive Dashboard -->
+    <footer class="relative z-40 bg-white/70 backdrop-blur-md p-4 flex flex-col md:flex-row justify-between items-center gap-4 shadow-panel-3d border-t-2 border-white/60">
+        <div class="flex gap-2 md:gap-3 flex-wrap justify-center">
+            <button id="arStatusIndicator" class="bg-gradient-to-b from-sky-400 to-sky-600 hover:from-sky-500 hover:to-sky-700 text-white px-4 md:px-5 py-2 md:py-2.5 rounded-2xl font-display font-extrabold shadow-md btn-premium-3d border-b-4 border-sky-800 text-xs md:text-sm">โหมด: คีบลากวาง (Touch / Mouse)</button>
+            <button onclick="triggerMiniJoy()" class="bg-white hover:bg-slate-50 text-sky-600 px-4 md:px-5 py-2 md:py-2.5 rounded-2xl font-display font-bold shadow-md btn-premium-3d border border-slate-200 border-b-4 border-slate-300 text-xs md:text-sm">เกรด ป.4</button>
+            <button onclick="triggerMiniJoy()" class="bg-white hover:bg-slate-50 text-sky-600 px-4 md:px-5 py-2 md:py-2.5 rounded-2xl font-display font-bold shadow-md btn-premium-3d border border-slate-200 border-b-4 border-slate-300 text-xs md:text-sm">ความรู้จำแนก</button>
+        </div>
+
+        <div class="flex items-center gap-3 bg-sky-50/80 px-4 md:px-5 py-2 md:py-2.5 rounded-3xl border border-sky-100 shadow-inner max-w-sm md:max-w-md">
+            <div class="text-2xl md:text-3xl floating-guide select-none">🤖</div>
+            <p id="botSpeech" class="text-[10px] md:text-sm text-sky-900 font-medium italic leading-tight">
+                "ตับ ทำหน้าที่ผลิตน้ำดีส่งไปเก็บไว้ที่ถุงน้ำดีเพื่อช่วยย่อยไขมันให้แตกตัวนะคร้าบ!"
+            </p>
+        </div>
+
+        <div class="flex items-center gap-4">
+            <div class="flex flex-col items-end">
+                <span class="text-[10px] md:text-xs font-bold text-premium-pink mb-1">ความคืบหน้า: 36/100 แต้ม</span>
+                <div class="w-36 md:w-48 h-3 md:h-4 bg-rose-100 rounded-full overflow-hidden shadow-inner border border-rose-200 p-[2px]">
+                    <div class="bg-gradient-to-r from-pink-400 via-rose-500 to-red-500 h-full w-[36%] rounded-full relative transition-all duration-300" id="progressBar">
+                        <div class="absolute inset-0 bg-white/20 w-full h-full"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="text-4xl md:text-5xl chest-shake cursor-pointer select-none btn-premium-3d hover:scale-110 active:scale-95 duration-100" onclick="triggerChestGift()">🎁</div>
+        </div>
+    </footer>
+
+    <!-- Active AR Cursor Glow object -->
+    <div id="arCursor" class="ar-cursor-pointer"></div>
+
+    <!-- Win Victory Screen Modal -->
+    <div id="winModal" class="fixed inset-0 z-50 bg-slate-900/45 flex items-center justify-center hidden opacity-0 transition-opacity duration-500 p-4">
+        <div class="bg-white rounded-[2rem] p-6 md:p-8 shadow-2xl transform scale-50 transition-transform duration-500 max-w-md w-full text-center relative border-8 border-yellow-400" id="winModalContent">
+            <canvas id="confettiCanvas" class="absolute inset-0 w-full h-full rounded-[2rem] pointer-events-none"></canvas>
+            
+            <div class="text-7xl md:text-8xl mb-4 floating-guide drop-shadow-2xl select-none">🏆</div>
+            <h2 class="font-display text-3xl md:text-4xl font-black text-amber-500 mb-2 tracking-wide">ALL CLEAR!</h2>
+            <p class="text-sm md:text-lg text-slate-600 mb-6 font-bold">ยอดเยี่ยมที่สุด! คุณจับคู่ตำแหน่งอวัยวะย่อยอาหารได้สมบูรณ์!</p>
+            
+            <div class="flex justify-center gap-4 md:gap-6 mb-8">
+                <div class="bg-amber-50 p-3 md:p-4 rounded-2xl border-2 border-amber-200 flex flex-col items-center shadow-md min-w-[100px]">
+                    <span class="text-2xl md:text-3xl mb-1 select-none">💰</span>
+                    <span class="font-display font-extrabold text-amber-600 text-xl md:text-2xl leading-none">+500</span>
+                    <span class="text-[9px] md:text-[10px] text-amber-800 font-bold mt-1">เหรียญรางวัล</span>
+                </div>
+                <div class="bg-rose-50 p-3 md:p-4 rounded-2xl border-2 border-rose-200 flex flex-col items-center shadow-md min-w-[100px]">
+                    <span class="text-2xl md:text-3xl mb-1 select-none">💎</span>
+                    <span class="font-display font-extrabold text-rose-600 text-xl md:text-2xl leading-none">+20</span>
+                    <span class="text-[9px] md:text-[10px] text-rose-800 font-bold mt-1">อัญมณีวิเศษ</span>
+                </div>
+            </div>
+
+            <button onclick="resetWholeGame()" class="w-full bg-gradient-to-b from-sky-400 to-sky-600 hover:from-sky-500 hover:to-sky-700 text-white font-display font-bold text-lg md:text-xl py-3.5 md:py-4 rounded-2xl shadow-3d-btn btn-premium-3d border-b-4 border-sky-800">
+                กลับมาเล่นอีกครั้ง!
+            </button>
+        </div>
+    </div>
+
+    <!-- Entrance Tutorial Dialog -->
+    <div id="initModal" class="fixed inset-0 z-50 bg-sky-950/40 backdrop-blur-md flex flex-col items-center justify-center transition-opacity duration-300 p-4">
+        <div class="bg-white p-6 md:p-8 rounded-[2.5rem] shadow-2xl text-center max-w-md border-4 border-sky-300">
+            <div class="text-6xl md:text-7xl mb-4 floating-guide select-none">🖐️</div>
+            <h2 class="font-display text-2xl md:text-3xl font-bold text-sky-800 mb-2">ระบบย่อยอาหารแสนสนุก AR</h2>
+            <p class="text-slate-600 mb-6 text-xs md:text-sm leading-relaxed font-medium">
+                ร่วมสนุกกับระบบการเรียนรู้ผ่านสรีรวิทยาสามมิติเสมือนจริงของเด็กหญิงผมแกละ คุณสามารถเลือกเล่นด้วยกล้อง AR เพื่อคีบคำศัพท์ หรือจะเลือกใช้หน้าจอสัมผัส/เมาส์ธรรมดาที่ทำงานได้เสถียร 100%
+            </p>
+            <div class="flex gap-4">
+                <button onclick="initApplicationFlow(false)" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl btn-premium-3d border-b-4 border-slate-300 text-sm">
+                    เล่นโหมดปกติ (ลื่นพิเศษ)
+                </button>
+                <button onclick="initApplicationFlow(true)" class="flex-1 bg-gradient-to-b from-sky-400 to-sky-600 hover:from-sky-500 hover:to-sky-700 text-white font-bold py-3.5 rounded-2xl btn-premium-3d border-b-4 border-sky-800 text-sm">
+                    เปิดใช้งานกล้อง AR
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* =======================================================================
+           1. Anatomical Coordinates Mapping
+           ======================================================================= */
+        const gameAnatomyData = [
+            { id: 'mouth', word: 'ปาก', desc: 'บดเคี้ยวอาหารด้วยฟัน', color: 'bg-pink-400', shadow: 'shadow-pink-500/40', svgX: 200, svgY: 155, side: 'left' },
+            { id: 'eso', word: 'หลอดอาหาร', desc: 'หดตัวลำเลียงอาหาร', color: 'bg-orange-400', shadow: 'shadow-orange-500/40', svgX: 200, svgY: 260, side: 'right' },
+            { id: 'stomach', word: 'กระเพาะอาหาร', desc: 'ย่อยโปรตีนด้วยกรด', color: 'bg-rose-500', shadow: 'shadow-rose-600/40', svgX: 230, svgY: 365, side: 'left' },
+            { id: 'liver', word: 'ตับ', desc: 'ผลิตน้ำดีช่วยย่อยไขมัน', color: 'bg-teal-500', shadow: 'shadow-teal-600/40', svgX: 170, svgY: 350, side: 'right' },
+            { id: 'small_int', word: 'ลำไส้เล็ก', desc: 'ย่อยและดูดซึมสารอาหาร', color: 'bg-yellow-500', shadow: 'shadow-yellow-600/40', svgX: 200, svgY: 510, side: 'left' },
+            { id: 'large_int', word: 'ลำไส้ใหญ่', desc: 'ดูดซึมน้ำและขับถ่ายกาก', color: 'bg-emerald-500', shadow: 'shadow-emerald-600/40', svgX: 165, svgY: 480, side: 'right' }
+        ];
+
+        let gameScore = 0;
+        let isCameraARActive = false;
+        let mainAnimationLoopId;
+        
+        // Canvas setups
+        const bgCanvas = document.getElementById('bgCanvas');
+        const bgCtx = bgCanvas.getContext('2d');
+        const arOverlayCanvas = document.getElementById('arOverlayCanvas');
+        const arCtx = arOverlayCanvas.getContext('2d');
+
+        /* =======================================================================
+           2. High Performance Web Audio Engine (Instant Feedback)
+           ======================================================================= */
+        let audioContextInstance;
+        function getAudioContext() {
+            if (!audioContextInstance) {
+                audioContextInstance = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContextInstance.state === 'suspended') {
+                audioContextInstance.resume();
+            }
+            return audioContextInstance;
+        }
+
+        function playSynthTone(freq, type, duration, volume = 0.15) {
+            try {
+                const ctx = getAudioContext();
+                const osc = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+                
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, ctx.currentTime);
+                
+                gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.005, ctx.currentTime + duration);
+                
+                osc.connect(gainNode);
+                gainNode.connect(ctx.destination);
+                
+                osc.start();
+                osc.stop(ctx.currentTime + duration);
+            } catch (err) {
+                // Audio synthesis fail silently
+            }
+        }
+
+        function playClickSound() {
+            playSynthTone(320, 'triangle', 0.1, 0.08);
+        }
+
+        function playSuccessSound() {
+            playSynthTone(784, 'sine', 0.15, 0.1);
+            setTimeout(() => playSynthTone(1046, 'sine', 0.35, 0.12), 80);
+        }
+
+        function playErrorSound() {
+            playSynthTone(140, 'sawtooth', 0.2, 0.08);
+        }
+
+        function playWinFanfare() {
+            const victoryNotes = [523, 659, 784, 1046, 1318];
+            victoryNotes.forEach((freq, idx) => {
+                setTimeout(() => playSynthTone(freq, 'triangle', 0.3, 0.1), idx * 110);
+            });
+        }
+
+        function triggerChestGift() {
+            playSynthTone(880, 'sine', 0.1, 0.1);
+            setTimeout(() => playSynthTone(1200, 'sine', 0.15, 0.1), 100);
+            triggerChestVisualBurst();
+        }
+
+        function triggerMiniJoy() {
+            playSynthTone(440, 'triangle', 0.1, 0.1);
+        }
+
+        /* =======================================================================
+           3. Procedural Particle System (Optimized Object Pool)
+           ====================================================================== */
+        const MAX_PARTICLES = 60;
+        let particlePool = [];
+        
+        class ShinyParticle {
+            constructor() {
+                this.reset(0, 0, '255, 255, 255');
+            }
+            reset(x, y, rgbColor) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 12;
+                this.vy = (Math.random() - 0.5) * 12 - 4;
+                this.life = 1.0;
+                this.color = rgbColor;
+                this.radius = Math.random() * 5 + 3;
+                this.active = true;
+            }
+            tick() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.28; // gravity
+                this.life -= 0.03;
+                if (this.life <= 0) {
+                    this.active = false;
+                }
+            }
+            render(ctx) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius * this.life, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${this.color}, ${this.life})`;
+                ctx.fill();
+            }
+        }
+
+        // Initialize particle pool
+        for (let i = 0; i < MAX_PARTICLES; i++) {
+            particlePool.push(new ShinyParticle());
+        }
+
+        function triggerVisualBurst(x, y, colorClass) {
+            const classColorMapping = { 
+                'bg-pink-400': '244,63,94', 
+                'bg-orange-400': '251,146,60', 
+                'bg-rose-500': '244,63,94', 
+                'bg-teal-500': '16,185,129', 
+                'bg-yellow-500': '245,158,11', 
+                'bg-emerald-500': '16,185,129' 
+            };
+            const rgbVal = classColorMapping[colorClass] || '14,165,233';
+            
+            let count = 0;
+            for (let i = 0; i < particlePool.length; i++) {
+                if (!particlePool[i].active) {
+                    particlePool[i].reset(x, y, rgbVal);
+                    count++;
+                    if (count >= 20) break; 
+                }
+            }
+        }
+
+        function triggerChestVisualBurst() {
+            const area = document.getElementById('gameArea');
+            const w = area.clientWidth;
+            const h = area.clientHeight;
+            triggerVisualBurst(w - 60, h - 60, 'bg-pink-400');
+        }
+
+        function updateAndRenderParticles() {
+            for (let i = 0; i < particlePool.length; i++) {
+                if (particlePool[i].active) {
+                    particlePool[i].tick();
+                    particlePool[i].render(bgCtx);
+                }
+            }
+        }
+
+        /* =======================================================================
+           4. Responsive Connection Drawing & Anchor Sizing
+           ======================================================================= */
+        let targetOrganClientCoordinates = {};
+
+        function updateDropZonesAndConnections() {
+            const gameArea = document.getElementById('gameArea');
+            if (!gameArea) return;
+
+            const w = gameArea.clientWidth;
+            const h = gameArea.clientHeight;
+
+            bgCanvas.width = w;
+            bgCanvas.height = h;
+            arOverlayCanvas.width = w;
+            arOverlayCanvas.height = h;
+
+            const characterSvg = document.getElementById('characterSvg');
+            if (!characterSvg) return;
+
+            const svgRect = characterSvg.getBoundingClientRect();
+            const gameAreaRect = gameArea.getBoundingClientRect();
+
+            const scaleX = svgRect.width / 400;
+            const scaleY = svgRect.height / 800;
+            const isMobile = w < 768;
+
+            gameAnatomyData.forEach(item => {
+                const targetX = svgRect.left - gameAreaRect.left + (item.svgX * scaleX);
+                const targetY = svgRect.top - gameAreaRect.top + (item.svgY * scaleY);
+                
+                targetOrganClientCoordinates[item.id] = { x: targetX, y: targetY };
+
+                const zoneElement = document.getElementById(`zone-${item.id}`);
+                if (zoneElement) {
+                    const zoneWidth = isMobile ? 115 : 145;
+                    const zoneHeight = isMobile ? 48 : 58;
+                    
+                    let zoneX, zoneY;
+
+                    if (isMobile) {
+                        if (item.side === 'left') {
+                            zoneX = 12;
+                        } else {
+                            zoneX = w - zoneWidth - 12;
+                        }
+                        zoneY = targetY - (zoneHeight / 2);
+                    } else {
+                        if (item.side === 'left') {
+                            zoneX = Math.max(15, (svgRect.left - gameAreaRect.left) - zoneWidth - 45);
+                        } else {
+                            zoneX = Math.min(w - zoneWidth - 15, (svgRect.right - gameAreaRect.left) + 45);
+                        }
+                        zoneY = targetY - (zoneHeight / 2);
+                    }
+
+                    zoneElement.style.width = `${zoneWidth}px`;
+                    zoneElement.style.height = `${zoneHeight}px`;
+                    zoneElement.style.left = `${zoneX}px`;
+                    zoneElement.style.top = `${zoneY}px`;
+                    
+                    zoneElement.style.transform = 'translate3d(0, 0, 0)';
+                }
+            });
+
+            drawInteractiveConnections(w, h);
+        }
+
+        function drawInteractiveConnections(w, h) {
+            bgCtx.clearRect(0, 0, w, h);
+
+            gameAnatomyData.forEach(item => {
+                const organPoint = targetOrganClientCoordinates[item.id];
+                const zoneElement = document.getElementById(`zone-${item.id}`);
+                
+                if (organPoint && zoneElement) {
+                    const zoneRect = zoneElement.getBoundingClientRect();
+                    const gameAreaRect = document.getElementById('gameArea').getBoundingClientRect();
+                    
+                    const zoneX = zoneRect.left - gameAreaRect.left + (zoneRect.width / 2);
+                    const zoneY = zoneRect.top - gameAreaRect.top + (zoneRect.height / 2);
+
+                    // Shiny center target
+                    bgCtx.beginPath();
+                    bgCtx.arc(organPoint.x, organPoint.y, 6, 0, Math.PI * 2);
+                    bgCtx.fillStyle = '#FFFFFF';
+                    bgCtx.fill();
+
+                    bgCtx.beginPath();
+                    bgCtx.arc(organPoint.x, organPoint.y, 11, 0, Math.PI * 2);
+                    bgCtx.strokeStyle = 'rgba(2, 132, 199, 0.7)';
+                    bgCtx.lineWidth = 2.5;
+                    bgCtx.stroke();
+
+                    // Beautiful dashed connection line
+                    bgCtx.beginPath();
+                    bgCtx.moveTo(organPoint.x, organPoint.y);
+                    bgCtx.lineTo(zoneX, zoneY);
+                    bgCtx.setLineDash([5, 5]);
+                    bgCtx.strokeStyle = 'rgba(2, 132, 199, 0.35)';
+                    bgCtx.lineWidth = 3;
+                    bgCtx.stroke();
+                    bgCtx.setLineDash([]);
+                }
+            });
+        }
+
+        window.addEventListener('resize', updateDropZonesAndConnections);
+
+        /* =======================================================================
+           5. DOM Builder (Clean Layout Generation)
+           ======================================================================= */
+        function createPlayableDOM() {
+            const dropZonesContainer = document.getElementById('dropZonesContainer');
+            const chipsTray = document.getElementById('chipsTray');
+            
+            dropZonesContainer.innerHTML = '';
+            chipsTray.innerHTML = '';
+
+            gameAnatomyData.forEach(item => {
+                const zone = document.createElement('div');
+                zone.className = `target-drop-zone absolute rounded-[1.25rem] flex flex-col justify-center items-center pointer-events-auto border-2 transition-all`;
+                zone.id = `zone-${item.id}`;
+                zone.dataset.id = item.id;
+                
+                zone.innerHTML = `
+                    <span class="text-sky-700 font-bold text-[10px] md:text-xs">ใส่: ${item.word}</span>
+                    <span class="text-[8px] md:text-[9px] text-sky-500 font-medium px-2 text-center leading-none mt-0.5">ลากวางตรงนี้</span>
+                `;
+                dropZonesContainer.appendChild(zone);
+
+                const chip = document.createElement('div');
+                chip.className = `draggable-word-chip ${item.color} text-white font-bold p-2.5 md:p-4 rounded-xl md:rounded-2xl shadow-md border-b-4 border-black/20 pointer-events-auto relative select-none max-w-[110px] md:max-w-[150px]`;
+                chip.id = `chip-${item.id}`;
+                chip.dataset.id = item.id;
+                chip.dataset.colorClass = item.color;
+                chip.innerHTML = `
+                    <div class="text-xs md:text-base leading-none tracking-wide text-center">${item.word}</div>
+                    <div class="text-[8px] md:text-[9px] opacity-90 mt-1 font-medium leading-tight text-center hidden md:block">${item.desc}</div>
+                `;
+                
+                // Mouse & Touch fallback events
+                chip.addEventListener('mousedown', handleChipDragStart);
+                chip.addEventListener('touchstart', handleChipDragStart, {passive: false});
+                
+                chipsTray.appendChild(chip);
+            });
+
+            setTimeout(updateDropZonesAndConnections, 120);
+        }
+
+        /* =======================================================================
+           6. Drag & Drop Handlers (Enhanced Touch / Mouse Fallbacks)
+           ======================================================================= */
+        let activeDraggedObject = null;
+        let deltaDragX = 0, deltaDragY = 0;
+
+        function handleChipDragStart(e) {
+            if(e.type === 'touchstart') e.preventDefault();
+            playClickSound();
+            
+            activeDraggedObject = this;
+            activeDraggedObject.classList.add('dragging');
+            
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            const boundingBox = activeDraggedObject.getBoundingClientRect();
+            
+            if(!activeDraggedObject.dataset.startX) {
+                activeDraggedObject.dataset.startX = activeDraggedObject.style.left || "0";
+                activeDraggedObject.dataset.startY = activeDraggedObject.style.top || "0";
+            }
+
+            activeDraggedObject.style.position = 'fixed';
+            activeDraggedObject.style.margin = '0';
+            activeDraggedObject.style.zIndex = '100';
+            
+            deltaDragX = clientX - boundingBox.left;
+            deltaDragY = clientY - boundingBox.top;
+
+            executeMovement(clientX, clientY);
+
+            document.addEventListener('mousemove', handleChipDragMove);
+            document.addEventListener('touchmove', handleChipDragMove, {passive: false});
+            document.addEventListener('mouseup', handleChipDragEnd);
+            document.addEventListener('touchend', handleChipDragEnd);
+        }
+
+        function handleChipDragMove(e) {
+            if (!activeDraggedObject) return;
+            if(e.type === 'touchmove') e.preventDefault();
+            
+            const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+            const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+            
+            executeMovement(clientX, clientY);
+            evaluateSnappingTarget(clientX, clientY);
+        }
+
+        function executeMovement(x, y) {
+            if(!activeDraggedObject) return;
+            activeDraggedObject.style.left = `${x - deltaDragX}px`;
+            activeDraggedObject.style.top = `${y - deltaDragY}px`;
+        }
+
+        function evaluateSnappingTarget(clientX, clientY) {
+            document.querySelectorAll('.target-drop-zone').forEach(z => z.classList.remove('active-hover'));
+            
+            activeDraggedObject.style.pointerEvents = 'none';
+            const underlyingElement = document.elementFromPoint(clientX, clientY);
+            activeDraggedObject.style.pointerEvents = 'auto';
+
+            if (underlyingElement && underlyingElement.closest('.target-drop-zone')) {
+                const zone = underlyingElement.closest('.target-drop-zone');
+                if(!zone.classList.contains('filled-success')) {
+                    zone.classList.add('active-hover');
+                }
+                return zone;
+            }
+            return null;
+        }
+
+        function handleChipDragEnd(e) {
+            if (!activeDraggedObject) return;
+            
+            const clientX = e.clientX || (e.changedTouches && e.changedTouches[0].clientX);
+            const clientY = e.clientY || (e.changedTouches && e.changedTouches[0].clientY);
+            
+            const targetZone = evaluateSnappingTarget(clientX, clientY);
+            
+            if (targetZone && targetZone.dataset.id === activeDraggedObject.dataset.id && !targetZone.classList.contains('filled-success')) {
+                playSuccessSound();
+                targetZone.classList.remove('active-hover');
+                targetZone.classList.add('filled-success');
+                targetZone.innerHTML = '';
+                
+                activeDraggedObject.style.position = 'static';
+                activeDraggedObject.style.transform = 'translate3d(0, 0, 0)';
+                activeDraggedObject.style.boxShadow = 'none';
+                activeDraggedObject.classList.remove('dragging');
+                activeDraggedObject.removeEventListener('mousedown', handleChipDragStart);
+                activeDraggedObject.removeEventListener('touchstart', handleChipDragStart);
+                activeDraggedObject.style.cursor = 'default';
+                
+                targetZone.appendChild(activeDraggedObject);
+                
+                const r = targetZone.getBoundingClientRect();
+                triggerVisualBurst(r.left + r.width/2, r.top + r.height/2, activeDraggedObject.dataset.colorClass);
+
+                gameScore++;
+                updateGameProgressIndicator();
+                if (gameScore >= gameAnatomyData.length) {
+                    setTimeout(displayVictoryScreen, 450);
+                }
+            } else {
+                playErrorSound();
+                activeDraggedObject.classList.remove('dragging');
+                activeDraggedObject.style.position = 'relative';
+                activeDraggedObject.style.left = '0';
+                activeDraggedObject.style.top = '0';
+                activeDraggedObject.style.zIndex = '30';
+                
+                document.querySelectorAll('.target-drop-zone').forEach(z => z.classList.remove('active-hover'));
+            }
+
+            activeDraggedObject = null;
+            document.removeEventListener('mousemove', handleChipDragMove);
+            document.removeEventListener('touchmove', handleChipDragMove);
+            document.removeEventListener('mouseup', handleChipDragEnd);
+            document.removeEventListener('touchend', handleChipDragEnd);
+        }
+
+        function updateGameProgressIndicator() {
+            const ratio = Math.round((gameScore / gameAnatomyData.length) * 100);
+            document.getElementById('progressBar').style.width = `${ratio}%`;
+        }
+
+        /* =======================================================================
+           7. Auto-Fallback MediaPipe Web AR Integration (Ultra-Smooth LERP)
+           ======================================================================= */
+        const arCursorElement = document.getElementById('arCursor');
+        let rawTargetCoordinates = { x: window.innerWidth/2, y: window.innerHeight/2 };
+        let lerpedSmoothCoordinates = { x: window.innerWidth/2, y: window.innerHeight/2 };
+        let isUserPinching = false;
+        let activeARSelection = null;
+        let arSelectionOffsetX = 0, arSelectionOffsetY = 0;
+
+        function processMediaPipeFrames(results) {
+            arCtx.clearRect(0, 0, arOverlayCanvas.width, arOverlayCanvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const handSkeleton = results.multiHandLandmarks[0];
+                
+                // Draw lightweight bone indicators
+                drawConnectors(arCtx, handSkeleton, HAND_CONNECTIONS, {color: 'rgba(56, 189, 248, 0.45)', lineWidth: 3});
+                drawLandmarks(arCtx, handSkeleton, {color: 'rgba(14, 165, 233, 0.8)', lineWidth: 1, radius: 2.5});
+
+                const indexFingerTip = handSkeleton[8];
+                const thumbFingerTip = handSkeleton[4];
+
+                rawTargetCoordinates.x = (1 - indexFingerTip.x) * window.innerWidth;
+                rawTargetCoordinates.y = indexFingerTip.y * window.innerHeight;
+
+                const diffX = indexFingerTip.x - thumbFingerTip.x;
+                const diffY = indexFingerTip.y - thumbFingerTip.y;
+                const totalDistance = Math.sqrt(diffX*diffX + diffY*diffY);
+                
+                const PINCH_TRIGGER_THRESHOLD = 0.035;
+                const PINCH_RELEASE_THRESHOLD = 0.052;
+
+                if (!isUserPinching && totalDistance < PINCH_TRIGGER_THRESHOLD) {
+                    isUserPinching = true;
+                    arCursorElement.classList.add('pinching');
+                    executeARPinchAction();
+                } else if (isUserPinching && totalDistance > PINCH_RELEASE_THRESHOLD) {
+                    isUserPinching = false;
+                    arCursorElement.classList.remove('pinching');
+                    executeARDropAction();
+                }
+            }
+        }
+
+        function executeARPinchAction() {
+            arCursorElement.style.pointerEvents = 'none';
+            const matchedElement = document.elementFromPoint(lerpedSmoothCoordinates.x, lerpedSmoothCoordinates.y);
+            
+            if (matchedElement && matchedElement.closest('.draggable-word-chip')) {
+                const activeChip = matchedElement.closest('.draggable-word-chip');
+                if(activeChip.parentElement.classList.contains('target-drop-zone')) return; 
+
+                playClickSound();
+                activeARSelection = activeChip;
+                activeARSelection.classList.add('dragging');
+                
+                const boundingBox = activeARSelection.getBoundingClientRect();
+                activeARSelection.style.position = 'fixed';
+                activeARSelection.style.margin = '0';
+                activeARSelection.style.zIndex = '100';
+                
+                arSelectionOffsetX = boundingBox.width / 2;
+                arSelectionOffsetY = boundingBox.height / 2;
+            }
+        }
+
+        function executeARDropAction() {
+            if (!activeARSelection) return;
+            
+            const targetZone = evaluateSnappingTarget(lerpedSmoothCoordinates.x, lerpedSmoothCoordinates.y);
+            
+            if (targetZone && targetZone.dataset.id === activeARSelection.dataset.id && !targetZone.classList.contains('filled-success')) {
+                playSuccessSound();
+                targetZone.classList.remove('active-hover');
+                targetZone.classList.add('filled-success');
+                targetZone.innerHTML = '';
+                
+                activeARSelection.style.position = 'static';
+                activeARSelection.style.transform = 'translate3d(0, 0, 0)';
+                activeARSelection.style.boxShadow = 'none';
+                activeARSelection.classList.remove('dragging');
+                activeARSelection.removeEventListener('mousedown', handleChipDragStart);
+                activeARSelection.removeEventListener('touchstart', handleChipDragStart);
+                
+                targetZone.appendChild(activeARSelection);
+                
+                const r = targetZone.getBoundingClientRect();
+                triggerVisualBurst(r.left + r.width/2, r.top + r.height/2, activeARSelection.dataset.colorClass);
+
+                gameScore++;
+                updateGameProgressIndicator();
+                if (gameScore >= gameAnatomyData.length) {
+                    setTimeout(displayVictoryScreen, 450);
+                }
+            } else {
+                playErrorSound();
+                activeARSelection.classList.remove('dragging');
+                activeARSelection.style.position = 'relative';
+                activeARSelection.style.left = '0';
+                activeARSelection.style.top = '0';
+                activeARSelection.style.zIndex = '30';
+                document.querySelectorAll('.target-drop-zone').forEach(z => z.classList.remove('active-hover'));
+            }
+            activeARSelection = null;
+        }
+
+        let mediaPipeCameraInstance = null;
+        let mediaPipeHands = null;
+
+        async function activateARSystem() {
+            const videoSource = document.getElementById('input_video');
+            const arBtnText = document.getElementById('arBtnText');
+            const arCameraIcon = document.getElementById('arCameraIcon');
+            const arStatusIndicator = document.getElementById('arStatusIndicator');
+            const assistantSpeech = document.getElementById('assistantSpeech');
+
+            arBtnText.innerText = "กำลังเชื่อมต่อกล้อง...";
+            
+            try {
+                // Primary CDN configuration with instant fallback
+                mediaPipeHands = new Hands({locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }});
+                
+                mediaPipeHands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 0, 
+                    minDetectionConfidence: 0.6,
+                    minTrackingConfidence: 0.6
+                });
+                
+                mediaPipeHands.onResults(processMediaPipeFrames);
+                
+                mediaPipeCameraInstance = new Camera(videoSource, {
+                    onFrame: async () => {
+                        if (isCameraARActive && mediaPipeHands) {
+                            await mediaPipeHands.send({image: videoSource});
+                        }
+                    },
+                    width: 480,
+                    height: 360
+                });
+                
+                await mediaPipeCameraInstance.start();
+                
+                isCameraARActive = true;
+                arCursorElement.style.display = 'block';
+                arCameraIcon.className = 'fas fa-camera text-green-300 text-xl';
+                arBtnText.innerText = "เปิดโหมด AR แล้ว";
+                arStatusIndicator.innerText = "โหมด: คีบลากวาง (AR Camera)";
+                assistantSpeech.innerText = "กล้องตรวจจับท่าทางพร้อมแล้วจ้า! ลองยกมือขึ้นมาจีบปลายนิ้วดูนะ!";
+            } catch (err) {
+                console.warn("กล้องล้มเหลว ย้ายระบบไปใช้ Auto-Simulator เสมือนจริงทันที", err);
+                switchToSimulatorMode();
+            }
+        }
+
+        function switchToSimulatorMode() {
+            isCameraARActive = false;
+            const arBtnText = document.getElementById('arBtnText');
+            const arCameraIcon = document.getElementById('arCameraIcon');
+            const arStatusIndicator = document.getElementById('arStatusIndicator');
+            const assistantSpeech = document.getElementById('assistantSpeech');
+
+            arCameraIcon.className = 'fas fa-hand-pointer text-yellow-300 text-xl';
+            arBtnText.innerText = "จำลอง AR (Simulator)";
+            arStatusIndicator.innerText = "โหมด: คีบลากวาง (AR Simulator)";
+            assistantSpeech.innerText = "กล้องเข้าถึงไม่ได้ ระบบเปิดตัวจำลอง AR อัจฉริยะให้คุณแล้ว! เล่นอย่างสนุกได้เลย!";
+            
+            // Activate Simulator Mouse Pointer
+            arCursorElement.style.display = 'block';
+            
+            // Attach mouse tracker for simulator on main screen area
+            document.getElementById('gameArea').addEventListener('mousemove', (e) => {
+                rawTargetCoordinates.x = e.clientX;
+                rawTargetCoordinates.y = e.clientY;
+            });
+            document.getElementById('gameArea').addEventListener('touchmove', (e) => {
+                if(e.touches.length > 0) {
+                    rawTargetCoordinates.x = e.touches[0].clientX;
+                    rawTargetCoordinates.y = e.touches[0].clientY;
+                }
+            }, {passive: true});
+
+            // Simulator "Touch & Hold" to Pinch
+            const activatePinch = () => {
+                isUserPinching = true;
+                arCursorElement.classList.add('pinching');
+                executeARPinchAction();
+            };
+            const releasePinch = () => {
+                isUserPinching = false;
+                arCursorElement.classList.remove('pinching');
+                executeARDropAction();
+            };
+
+            document.getElementById('gameArea').addEventListener('mousedown', activatePinch);
+            document.getElementById('gameArea').addEventListener('mouseup', releasePinch);
+            document.getElementById('gameArea').addEventListener('touchstart', (e) => {
+                if(e.touches.length > 0) {
+                    rawTargetCoordinates.x = e.touches[0].clientX;
+                    rawTargetCoordinates.y = e.touches[0].clientY;
+                }
+                activatePinch();
+            }, {passive: true});
+            document.getElementById('gameArea').addEventListener('touchend', releasePinch, {passive: true});
+        }
+
+        function toggleARMode() {
+            getAudioContext();
+            if(!isCameraARActive) {
+                activateARSystem();
+            } else {
+                playClickSound();
+            }
+        }
+
+        /* =======================================================================
+           8. Ultra-Smooth Delta Time Game Loop (60 FPS + Refresh rate decoupled)
+           ======================================================================= */
+        let lastTimeFrame = performance.now();
+        
+        function mainApplicationLoop(timestamp) {
+            let dt = (timestamp - lastTimeFrame) / 1000;
+            if (dt > 0.1) dt = 0.1; 
+            lastTimeFrame = timestamp;
+
+            const trackingSmoothingFactor = 1 - Math.pow(0.0001, dt); 
+            
+            lerpedSmoothCoordinates.x += (rawTargetCoordinates.x - lerpedSmoothCoordinates.x) * trackingSmoothingFactor;
+            lerpedSmoothCoordinates.y += (rawTargetCoordinates.y - lerpedSmoothCoordinates.y) * trackingSmoothingFactor;
+            
+            if(arCursorElement.style.display === 'block') {
+                arCursorElement.style.transform = `translate3d(${lerpedSmoothCoordinates.x}px, ${lerpedSmoothCoordinates.y}px, 0) translate(-50%, -50%)`;
+            }
+
+            if (activeARSelection && isUserPinching) {
+                activeARSelection.style.left = `${lerpedSmoothCoordinates.x - arSelectionOffsetX}px`;
+                activeARSelection.style.top = `${lerpedSmoothCoordinates.y - arSelectionOffsetY}px`;
+                evaluateSnappingTarget(lerpedSmoothCoordinates.x, lerpedSmoothCoordinates.y);
+            }
+
+            const gameArea = document.getElementById('gameArea');
+            if (gameArea) {
+                drawInteractiveConnections(gameArea.clientWidth, gameArea.clientHeight);
+            }
+            updateAndRenderParticles();
+
+            mainAnimationLoopId = requestAnimationFrame(mainApplicationLoop);
+        }
+
+        /* =======================================================================
+           9. Application Flow Management
+           ======================================================================= */
+        function initApplicationFlow(useCameraAR) {
+            document.getElementById('initModal').style.opacity = '0';
+            setTimeout(() => document.getElementById('initModal').style.display = 'none', 300);
+            
+            getAudioContext();
+            createPlayableDOM();
+            
+            requestAnimationFrame((ts) => {
+                lastTimeFrame = ts;
+                mainApplicationLoop(ts);
+            });
+
+            if(useCameraAR) {
+                activateARSystem();
+            } else {
+                switchToSimulatorMode();
+            }
+        }
+
+        function displayVictoryScreen() {
+            playWinFanfare();
+            const m = document.getElementById('winModal');
+            const c = document.getElementById('winModalContent');
+            
+            let coinNode = document.getElementById('coinCount');
+            coinNode.innerText = "3,750";
+            coinNode.classList.add('text-green-500', 'scale-125');
+            setTimeout(() => coinNode.classList.remove('text-green-500', 'scale-125'), 600);
+
+            m.classList.remove('hidden');
+            setTimeout(() => {
+                m.classList.remove('opacity-0');
+                c.classList.remove('scale-50');
+                c.classList.add('scale-100');
+                fireVictoryConfetti();
+            }, 60);
+        }
+
+        function resetWholeGame() {
+            gameScore = 0;
+            updateGameProgressIndicator();
+            createPlayableDOM();
+            
+            const m = document.getElementById('winModal');
+            const c = document.getElementById('winModalContent');
+            
+            m.classList.add('opacity-0');
+            c.classList.remove('scale-100');
+            c.classList.add('scale-50');
+            
+            setTimeout(() => {
+                m.classList.add('hidden');
+                shutdownConfetti();
+            }, 450);
+        }
+
+        // Victory Confetti system (Decoupled & optimized)
+        let victoryConfettiArr = [];
+        let victoryConfettiLoopId;
+        
+        function fireVictoryConfetti() {
+            const canvas = document.getElementById('confettiCanvas');
+            const ctx = canvas.getContext('2d');
+            const bounding = canvas.getBoundingClientRect();
+            
+            canvas.width = bounding.width;
+            canvas.height = bounding.height;
+
+            const hues = ['#EC4899', '#FBBF24', '#3B82F6', '#10B981', '#8B5CF6'];
+            for(let i = 0; i < 50; i++) {
+                victoryConfettiArr.push({
+                    x: Math.random() * canvas.width,
+                    y: -20 - Math.random() * 100,
+                    vx: (Math.random() - 0.5) * 4,
+                    vy: Math.random() * 3 + 2,
+                    color: hues[Math.floor(Math.random() * hues.length)],
+                    dim: Math.random() * 7 + 4,
+                    spin: Math.random() * 360,
+                    spinSpeed: (Math.random() - 0.5) * 6
+                });
+            }
+            
+            function animateConfetti() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                victoryConfettiArr.forEach(c => {
+                    c.x += c.vx;
+                    c.y += c.vy;
+                    c.spin += c.spinSpeed;
+                    
+                    ctx.save();
+                    ctx.translate(c.x, c.y);
+                    ctx.rotate(c.spin * Math.PI / 180);
+                    ctx.fillStyle = c.color;
+                    ctx.fillRect(-c.dim/2, -c.dim/2, c.dim, c.dim/2);
+                    ctx.restore();
+                    
+                    if (c.y > canvas.height) {
+                        c.y = -10;
+                        c.x = Math.random() * canvas.width;
+                    }
+                });
+                victoryConfettiLoopId = requestAnimationFrame(animateConfetti);
+            }
+            animateConfetti();
+        }
+
+        function shutdownConfetti() {
+            cancelAnimationFrame(victoryConfettiLoopId);
+            victoryConfettiArr = [];
+        }
+    </script>
+</body>
+</html>
